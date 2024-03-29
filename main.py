@@ -1,24 +1,36 @@
-from tkinter import filedialog, Tk
 import base64
 import datetime
 import io
 import os
-import time
-from PIL import Image
-import numpy as np
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from tkinter import filedialog, Tk
+
 import gradio as gr
+import numpy as np
+from PIL import Image
 from gradio import Warning
 from openai import OpenAI
-import sys
-import threading
-from concurrent.futures import ThreadPoolExecutor
+
+from threading import Thread
+from rate_limiter import RateLimiter, reset_limiter_periodically
 
 FOLDER_SYMBOL = '\U0001f4c2'  # 📂
 MAX_IMAGE_WIDTH = 2048
 IMAGE_FORMAT = "JPEG"
 
+# assuming a normal user has tier 1 access to the openAI API, you have 10.000 tpm
+# so say 10 image with around 1000 tokens
+rate_limiter = RateLimiter(10, 60)
+
+# Create and start the reset thread
+reset_thread = Thread(target=reset_limiter_periodically, args=(rate_limiter, 60))
+reset_thread.start()
+
 
 def generate_description(api_key, image, prompt, detail, max_tokens):
+
+    rate_limiter.wait()  # wait if we have exhausted our token limit
     try:
         img = Image.fromarray(image) if isinstance(image, np.ndarray) else Image.open(image)
         img = scale_image(img)
@@ -42,6 +54,10 @@ def generate_description(api_key, image, prompt, detail, max_tokens):
         }
 
         response = client.chat.completions.create(**payload)
+
+        # API call is made, so incrementing the call counter
+        rate_limiter.add_call()
+
         return response.choices[0].message.content
 
     except Exception as e:
@@ -74,7 +90,7 @@ def scale_image(img):
 
 def get_dir(file_path):
     dir_path, file_name = os.path.split(file_path)
-    return (dir_path, file_name)
+    return dir_path, file_name
 
 
 def get_folder_path(folder_path=''):
