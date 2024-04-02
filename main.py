@@ -13,24 +13,25 @@ from gradio import Warning
 from openai import OpenAI
 
 from threading import Thread
-from rate_limiter import RateLimiter, reset_limiter_periodically
+
+# from rate_limiter import RateLimiter, reset_limiter_periodically
 
 FOLDER_SYMBOL = '\U0001f4c2'  # 📂
 MAX_IMAGE_WIDTH = 2048
 IMAGE_FORMAT = "JPEG"
 
+
 # assuming a normal user has tier 1 access to the openAI API, you have 10.000 tpm
 # so say 10 image with around 1000 tokens
-rate_limiter = RateLimiter(10, 60)
+# rate_limiter = RateLimiter(10, 60)
 
 # Create and start the reset thread
-reset_thread = Thread(target=reset_limiter_periodically, args=(rate_limiter, 60))
-reset_thread.start()
+# reset_thread = Thread(target=reset_limiter_periodically, args=(rate_limiter, 60))
+# reset_thread.start()
 
 
 def generate_description(api_key, image, prompt, detail, max_tokens):
-
-    rate_limiter.wait()  # wait if we have exhausted our token limit
+    # rate_limiter.wait()  # wait if we have exhausted our token limit
     try:
         img = Image.fromarray(image) if isinstance(image, np.ndarray) else Image.open(image)
         img = scale_image(img)
@@ -56,7 +57,7 @@ def generate_description(api_key, image, prompt, detail, max_tokens):
         response = client.chat.completions.create(**payload)
 
         # API call is made, so incrementing the call counter
-        rate_limiter.add_call()
+        # rate_limiter.add_call()
 
         return response.choices[0].message.content
 
@@ -147,7 +148,6 @@ def process_folder(api_key, folder_path, prompt, detail, max_tokens, pre_prompt=
         with open(txt_path, 'w', encoding='utf-8') as f:
             f.write(pre_prompt + ", " + description + " " + post_prompt)
 
-
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         for i, _ in enumerate(executor.map(process_file, file_list), 1):
             progress((i, len(file_list)))
@@ -232,14 +232,15 @@ with gr.Blocks() as app:
                         outputs=[output, history_table])
 
 
-    def on_click_folder(api_key, folder_path, prompt, detail, max_tokens, pre_prompt, post_prompt, worker_slider):
+    def on_click_folder(api_key, folder_path, prompt, detail, max_tokens, pre_prompt, post_prompt, worker_slider_local):
         if not api_key.strip():
             raise Warning("Please enter your OpenAI API key.")
 
         if not folder_path.strip():
             raise Warning("Please enter the folder path.")
 
-        result = process_folder(api_key, folder_path, prompt, detail, max_tokens, pre_prompt, post_prompt)
+        result = process_folder(api_key, folder_path, prompt, detail, max_tokens, pre_prompt, post_prompt,
+                                num_workers=worker_slider_local)
         return result
 
 
