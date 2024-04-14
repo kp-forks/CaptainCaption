@@ -3,6 +3,7 @@ import datetime
 import io
 import os
 import sys
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from tkinter import filedialog, Tk
 
@@ -62,6 +63,9 @@ def generate_description(api_key, image, prompt, detail, max_tokens):
         return response.choices[0].message.content
 
     except Exception as e:
+        with open("error_log.txt", 'a') as log_file:
+            log_file.write(str(e) + '\n')
+            log_file.write(traceback.format_exc() + '\n')
         return f"Error: {str(e)}"
 
 
@@ -186,7 +190,7 @@ with gr.Blocks() as app:
             folder_button.click(
                 get_folder_path,
                 outputs=folder_path_dataset,
-                show_progress=False,
+                show_progress="hidden",
             )
         with gr.Row():
             prompt_input_dataset = gr.Textbox(scale=6, label="Prompt",
