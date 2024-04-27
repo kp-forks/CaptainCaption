@@ -43,7 +43,7 @@ def generate_description(api_key, image, prompt, detail, max_tokens):
 
         client = OpenAI(api_key=api_key)
         payload = {
-            "model": "gpt-4-vision-preview",
+            "model": "gpt-4-turbo",
             "messages": [{
                 "role": "user",
                 "content": [
