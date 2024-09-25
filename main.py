@@ -4,6 +4,9 @@ import io
 import os
 import sys
 import traceback
+import glob
+import os
+from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 from tkinter import filedialog, Tk
 
@@ -15,24 +18,36 @@ from openai import OpenAI
 
 from threading import Thread
 
-# from rate_limiter import RateLimiter, reset_limiter_periodically
 
 FOLDER_SYMBOL = '\U0001f4c2'  # 📂
 MAX_IMAGE_WIDTH = 2048
 IMAGE_FORMAT = "JPEG"
 
+def load_images_and_text(folder_path):
+    image_files = glob.glob(os.path.join(folder_path, "*.jpg")) + glob.glob(os.path.join(folder_path, "*.png"))
+    image_files.sort()
+    images = []
+    texts = []
+    for img_path in image_files:
+        txt_path = os.path.splitext(img_path)[0] + ".txt"
+        if os.path.exists(txt_path):
+            with open(txt_path, 'r', encoding='utf-8') as f:
+                text = f.read()
+            images.append(img_path)
+            texts.append(text)
+    return images, texts
 
-# assuming a normal user has tier 1 access to the openAI API, you have 10.000 tpm
-# so say 10 image with around 1000 tokens
-# rate_limiter = RateLimiter(10, 60)
+def display_image_and_text(image_path, text):
+    img = Image.open(image_path)
+    return img, text
 
-# Create and start the reset thread
-# reset_thread = Thread(target=reset_limiter_periodically, args=(rate_limiter, 60))
-# reset_thread.start()
-
+def save_edited_text(image_path, new_text):
+    txt_path = os.path.splitext(image_path)[0] + ".txt"
+    with open(txt_path, 'w', encoding='utf-8') as f:
+        f.write(new_text)
+    return f"Saved changes for {os.path.basename(image_path)}"
 
 def generate_description(api_key, image, prompt, detail, max_tokens):
-    # rate_limiter.wait()  # wait if we have exhausted our token limit
     try:
         img = Image.fromarray(image) if isinstance(image, np.ndarray) else Image.open(image)
         img = scale_image(img)
@@ -43,7 +58,7 @@ def generate_description(api_key, image, prompt, detail, max_tokens):
 
         client = OpenAI(api_key=api_key)
         payload = {
-            "model": "gpt-4-turbo",
+            "model": "gpt-4o-mini",
             "messages": [{
                 "role": "user",
                 "content": [
@@ -57,9 +72,6 @@ def generate_description(api_key, image, prompt, detail, max_tokens):
 
         response = client.chat.completions.create(**payload)
 
-        # API call is made, so incrementing the call counter
-        # rate_limiter.add_call()
-
         return response.choices[0].message.content
 
     except Exception as e:
@@ -68,6 +80,28 @@ def generate_description(api_key, image, prompt, detail, max_tokens):
             log_file.write(traceback.format_exc() + '\n')
         return f"Error: {str(e)}"
 
+def load_images_and_text(folder_path):
+    image_files = glob.glob(os.path.join(folder_path, "*.jpg")) + glob.glob(os.path.join(folder_path, "*.png"))
+    image_files.sort()
+    images = []
+    texts = []
+    for img_path in image_files:
+        txt_path = os.path.splitext(img_path)[0] + ".txt"
+        if os.path.exists(txt_path):
+            with open(txt_path, 'r', encoding='utf-8') as f:
+                text = f.read()
+            images.append(img_path)
+            texts.append(text)
+    return images, texts
+
+def display_image_and_text(image_path, text):
+    return image_path, text
+
+def save_edited_text(image_path, new_text):
+    txt_path = os.path.splitext(image_path)[0] + ".txt"
+    with open(txt_path, 'w', encoding='utf-8') as f:
+        f.write(new_text)
+    return f"Saved changes for {os.path.basename(image_path)}"
 
 history = []
 columns = ["Time", "Prompt", "GPT4-Vision Caption"]
@@ -163,8 +197,10 @@ def process_folder(api_key, folder_path, prompt, detail, max_tokens, pre_prompt=
 
 
 with gr.Blocks() as app:
-    api_key_input = gr.Textbox(label="OpenAI API Key", placeholder="Enter your API key here", type="password",
-                               info="The OpenAI API is rate limited to 20 requests per second. A big dataset can take a long time to tag.")
+    with gr.Accordion("Configuration", open=False):
+        api_key_input = gr.Textbox(label="OpenAI API Key", placeholder="Enter your API key here", type="password",
+                                   info="The OpenAI API is rate limited to 20 requests per second. A big dataset can take a long time to tag.")
+        runpod_api_key_input = gr.Textbox(label="Runpod API Key", placeholder="Enter your API key here", type="password")
     with gr.Tab("Prompt Engineering"):
         image_input = gr.Image(label="Upload Image")
         with gr.Row():
@@ -210,6 +246,108 @@ with gr.Blocks() as app:
         with gr.Row():
             processing_results_output = gr.Textbox(label="Processing Results")
 
+    with gr.Tab("View and Edit Captions"):
+        with gr.Row():
+            folder_path_view = gr.Textbox(label="Dataset Folder Path", placeholder="/home/user/dataset", scale=8)
+            folder_button = gr.Button('📂', elem_id='open_folder_small', scale=1)
+        
+        load_button = gr.Button("Load Images and Captions")
+        
+        with gr.Row():
+            image_output = gr.Gallery(label="Image", show_label=False, elem_id="preview_gallery", columns=[1], rows=[1], height="420px", allow_preview=True)
+            text_output = gr.Textbox(label="Caption", lines=5, interactive=True)
+        
+        save_button = gr.Button("Save Changes")
+        with gr.Row():
+            prev_button = gr.Button("Previous")
+            next_button = gr.Button("Next")
+        status_output = gr.Textbox(label="Status")
+        
+        gallery = gr.Gallery(label="Image Gallery", show_label=False, elem_id="gallery", columns=[5], rows=[2], height="auto", allow_preview=False)
+        
+        current_index = gr.State(0)
+        images_list = gr.State([])
+        texts_list = gr.State([])
+
+        folder_button.click(
+            get_folder_path,
+            outputs=folder_path_view,
+            show_progress="hidden",
+        )
+
+        def save_caption(index, images, texts, new_text):
+            if 0 <= index < len(images):
+                image_path = images[index]
+                save_edited_text(image_path, new_text)
+                texts[index] = new_text
+                return texts, "Changes saved successfully"
+            return texts, "Error: Invalid image index"
+
+        save_button.click(
+            save_caption,
+            inputs=[current_index, images_list, texts_list, text_output],
+            outputs=[texts_list, status_output]
+        )
+
+        def load_data_and_display_first(folder_path):
+            images, texts = load_images_and_text(folder_path)
+            if images and texts:
+                img_path = images[0]
+                txt = texts[0]
+                return (
+                    0, images, texts, 
+                    [(img_path, os.path.basename(img_path))],
+                    txt, 
+                    f"Loaded {len(images)} images",
+                    [(img, os.path.basename(img)) for img in images]
+                )
+            return 0, [], [], [], "", "No images found in the specified folder", []
+
+        def update_display(index, images, texts):
+            if 0 <= index < len(images):
+                img_path = images[index]
+                txt = texts[index]
+                return [(img_path, os.path.basename(img_path))], txt
+            return [], ""
+
+        def nav_previous(current, images, texts):
+            new_index = max(0, current - 1)
+            preview_gallery, txt = update_display(new_index, images, texts)
+            return new_index, preview_gallery, txt
+
+        def nav_next(current, images, texts):
+            new_index = min(len(images) - 1, current + 1)
+            preview_gallery, txt = update_display(new_index, images, texts)
+            return new_index, preview_gallery, txt
+
+        def gallery_select(evt: gr.SelectData, images, texts):
+            index = evt.index
+            preview_gallery, txt = update_display(index, images, texts)
+            return index, preview_gallery, txt
+
+        load_button.click(
+            load_data_and_display_first,
+            inputs=[folder_path_view],
+            outputs=[current_index, images_list, texts_list, image_output, text_output, status_output, gallery]
+        )
+
+        prev_button.click(
+            nav_previous,
+            inputs=[current_index, images_list, texts_list],
+            outputs=[current_index, image_output, text_output]
+        )
+
+        next_button.click(
+            nav_next,
+            inputs=[current_index, images_list, texts_list],
+            outputs=[current_index, image_output, text_output]
+        )
+
+        gallery.select(
+            gallery_select,
+            inputs=[images_list, texts_list],
+            outputs=[current_index, image_output, text_output]
+        )
 
     def cancel_processing():
         global is_processing
