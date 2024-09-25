@@ -200,7 +200,6 @@ with gr.Blocks() as app:
     with gr.Accordion("Configuration", open=False):
         api_key_input = gr.Textbox(label="OpenAI API Key", placeholder="Enter your API key here", type="password",
                                    info="The OpenAI API is rate limited to 20 requests per second. A big dataset can take a long time to tag.")
-        runpod_api_key_input = gr.Textbox(label="Runpod API Key", placeholder="Enter your API key here", type="password")
     with gr.Tab("Prompt Engineering"):
         image_input = gr.Image(label="Upload Image")
         with gr.Row():
