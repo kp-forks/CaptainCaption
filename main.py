@@ -1,12 +1,10 @@
 import base64
 import datetime
+import glob
 import io
 import os
 import sys
 import traceback
-import glob
-import os
-from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 from tkinter import filedialog, Tk
 
@@ -16,10 +14,6 @@ from PIL import Image
 from gradio import Warning
 from openai import OpenAI
 
-from threading import Thread
-
-
-FOLDER_SYMBOL = '\U0001f4c2'  # 📂
 MAX_IMAGE_WIDTH = 2048
 IMAGE_FORMAT = "JPEG"
 
@@ -37,15 +31,13 @@ def load_images_and_text(folder_path):
             texts.append(text)
     return images, texts
 
-def display_image_and_text(image_path, text):
-    img = Image.open(image_path)
-    return img, text
 
 def save_edited_text(image_path, new_text):
     txt_path = os.path.splitext(image_path)[0] + ".txt"
     with open(txt_path, 'w', encoding='utf-8') as f:
         f.write(new_text)
     return f"Saved changes for {os.path.basename(image_path)}"
+
 
 def generate_description(api_key, image, prompt, detail, max_tokens):
     try:
@@ -79,29 +71,6 @@ def generate_description(api_key, image, prompt, detail, max_tokens):
             log_file.write(str(e) + '\n')
             log_file.write(traceback.format_exc() + '\n')
         return f"Error: {str(e)}"
-
-def load_images_and_text(folder_path):
-    image_files = glob.glob(os.path.join(folder_path, "*.jpg")) + glob.glob(os.path.join(folder_path, "*.png"))
-    image_files.sort()
-    images = []
-    texts = []
-    for img_path in image_files:
-        txt_path = os.path.splitext(img_path)[0] + ".txt"
-        if os.path.exists(txt_path):
-            with open(txt_path, 'r', encoding='utf-8') as f:
-                text = f.read()
-            images.append(img_path)
-            texts.append(text)
-    return images, texts
-
-def display_image_and_text(image_path, text):
-    return image_path, text
-
-def save_edited_text(image_path, new_text):
-    txt_path = os.path.splitext(image_path)[0] + ".txt"
-    with open(txt_path, 'w', encoding='utf-8') as f:
-        f.write(new_text)
-    return f"Saved changes for {os.path.basename(image_path)}"
 
 history = []
 columns = ["Time", "Prompt", "GPT4-Vision Caption"]

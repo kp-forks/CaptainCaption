@@ -1,4 +1,4 @@
-Pillow
-numpy
-gradio
-openai
+Pillow==10.4.0
+numpy==2.1.2
+gradio==4.44.1
+openai==1.51.2
